@@ -4,7 +4,7 @@
 
 Note that the [`vboxtest`](docs/vm_tests.md) approach is now outdated.
 It's better to use the
-[`rvm-test`](https://github.com/wayneeseguin/rvm-test/) test suite
+[`rvm-test`](https://github.com/rvm/rvm-test/) test suite
 which lives in a separate git submodule.  (It's separate in order to
 allow reuse when hacking on rvm2).
 
@@ -12,7 +12,7 @@ allow reuse when hacking on rvm2).
     $ git submodule update  # Check out the rvm-test submodule
 
 Now read [`rvm-test`'s
-README.md](https://github.com/wayneeseguin/rvm-test/blob/master/README.md)
+README.md](https://github.com/rvm/rvm-test/blob/master/README.md)
 and follow those instructions to make sure you can successfully run
 the tests (you will need rvm already installed).
 
@@ -20,7 +20,7 @@ the tests (you will need rvm already installed).
 
 You need a test rvm install to run the test suite against:
 
-    $ git clone https://github.com/wayneeseguin/rvm  # or your own github fork
+    $ git clone https://github.com/rvm/rvm  # or your own github fork
     $ cd rvm
     $ rvm switch ~/path/to/rvm/test/install          # choose a path here
     $ ./install
@@ -36,7 +36,7 @@ you also need to do:
 
     $ rvm reload
 
-To get back to using orginal rvm installation run:
+To get back to using original rvm installation run:
 
     $ rvm switch ~/.rvm
 
@@ -44,10 +44,10 @@ To get back to using orginal rvm installation run:
 
 First write a test for the behaviour you expect.  For details on how
 to write new tests, see [`rvm-test`'s
-README.md](https://github.com/wayneeseguin/rvm-test/blob/master/README.md).
+README.md](https://github.com/rvm/rvm-test/blob/master/README.md).
 Then run the test:
 
-    $ tf --text rvm-test/fast/foo_comment_test.sh
+    $ NOEXEC_DISABLE=1 tf --text rvm-test/fast/foo_comment_test.sh
 
 It should fail.  Now repeat the following steps until the test passes:
 
@@ -55,7 +55,7 @@ It should fail.  Now repeat the following steps until the test passes:
     2. run `./install`
     3. re-run the test (you can also manually test via rvm commands on the CLI)
 
-Now `git commit`, `git push` to your github fork, then issue a pull
+Now `git commit`, `git push` to your GitHub fork, then issue a pull
 request, and if it is accepted then your place in hacker heaven is
 secured.
 

@@ -3,7 +3,7 @@
 macruby_install_extract_pkg()
 (
   set -x
-  typeset __source __target __temp1 __temp1_org __temp2 __result
+  \typeset __source __target __temp1 __temp1_org __temp2 __result
   __source="$1"
   __target="$2"
   __temp1="$( TMPDIR="${rvm_tmp_path}" mktemp -d -t rvm-tmp1.XXXXXXXXX )"
@@ -13,7 +13,7 @@ macruby_install_extract_pkg()
   __temp1_org="${__temp1}"
   __temp1+="/${rvm_ruby_package_name}" # required for the next command to run at all
   pkgutil --expand "${__source}" "${__temp1}" || __result=$?
-  __temp1="$( \find "${__temp1}" -name Payload -type f )"
+  __temp1="$( __rvm_find "${__temp1}" -name Payload -type f )"
   [[ -n "${__temp1}" ]] &&
   tar xzf "${__temp1}" -C "${__temp2}" &&
   mkdir -p "${__target}/" &&
@@ -29,7 +29,7 @@ macruby_install_extract_zip()
   unzip -o -j "${rvm_archives_path}/$rvm_ruby_package_file" \
     "MacRuby ${rvm_ruby_version}/MacRuby ${rvm_ruby_version}.pkg" \
     -d "${rvm_src_path}/$rvm_ruby_string"  &&
-  \mv "${rvm_src_path}/$rvm_ruby_string/MacRuby ${rvm_ruby_version}.pkg" \
+  \command \mv "${rvm_src_path}/$rvm_ruby_string/MacRuby ${rvm_ruby_version}.pkg" \
     "${rvm_src_path}/$rvm_ruby_string/$rvm_ruby_string.pkg" &&
   macruby_install_extract_pkg "${rvm_src_path}/$rvm_ruby_string/$rvm_ruby_string.pkg" "$rvm_ruby_home" ||
   return $?
@@ -37,7 +37,7 @@ macruby_install_extract_zip()
 
 macruby_install_wrapper()
 {
-  \cat <<RubyWrapper
+  \command \cat <<RubyWrapper
 #!/usr/bin/env bash
 
 export DYLD_LIBRARY_PATH="$rvm_ruby_home/usr/lib\${DYLD_LIBRARY_PATH:+:}\${DYLD_LIBRARY_PATH:-}"
@@ -53,7 +53,7 @@ RubyWrapper
 
 macruby_install_wrap_binaries_detect_rubyopt()
 {
-  typeset __path
+  \typeset __path
   extra_rubyopt=""
   for __path in $(
     DYLD_LIBRARY_PATH="$rvm_ruby_home/usr/lib" "$rvm_ruby_home/usr/bin/macruby" -e 'puts $LOAD_PATH'
@@ -71,7 +71,7 @@ macruby_install_fix_shebang()
   esac
   {
     echo "#!$rvm_ruby_home/usr/bin/macruby"
-    tail -n +2 "$rvm_ruby_home/usr/bin/mac$1"
+    __rvm_tail -n +2 "$rvm_ruby_home/usr/bin/mac$1"
   } > "$rvm_ruby_home/usr/bin/mac$1.new"
   mv -f "$rvm_ruby_home/usr/bin/mac$1.new" "$rvm_ruby_home/usr/bin/mac$1"
   chmod +x "$rvm_ruby_home/usr/bin/mac$1"
@@ -83,7 +83,7 @@ macruby_install_wrap_binary()
   file_name="$rvm_ruby_home/bin/$binary_name"
 
   if [[ -f "$file_name" ]]
-  then \rm -f "$file_name"
+  then \command \rm -f "$file_name"
   fi
 
   macruby_install_fix_shebang "$binary_name"
@@ -99,7 +99,7 @@ macruby_install_wrap_binaries()
     rvm_error "Can not create binaries directory => $rvm_ruby_home/bin/"
     return 1
   }
-  typeset binary_name extra_rubyopt
+  \typeset binary_name extra_rubyopt
   macruby_install_wrap_binaries_detect_rubyopt
 
   for binary_name in "$rvm_ruby_home/usr/bin"/mac*
@@ -110,7 +110,7 @@ macruby_install_wrap_binaries()
 
 macruby_install()
 {
-  [[ "Darwin" == "$(uname)" ]] ||
+  [[ "Darwin" == "${_system_type}" ]] ||
   {
     rvm_error "MacRuby can only be installed on a Darwin OS."
     exit 1
@@ -172,12 +172,8 @@ macruby_install()
         ;;
     esac
   fi
-
   macruby_install_wrap_binaries
-
-  rvm_create_flag=1 __rvm_use
-
+  __rvm_initial_gemsets_create "$rvm_ruby_home/bin/ruby"
   binaries=()
   __rvm_post_install
-  __rvm_generate_wrappers
 }

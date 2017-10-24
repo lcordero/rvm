@@ -1,42 +1,35 @@
+# Wrapper
 
-∴ rvm wrapper <ruby_string> [<wrapper_prefix>|--no-prefix] [binary[ binaries[ ...]]]
+Show/regenrate wrappers.
 
-where ruby_string is the ruby version and gemset combination to wrap
-(it can also refer to a valid project path), wrapper_prefix is what to
-prepend to the name of the generated wrapper, and binary and binaries
-are the names of the binaries for which you wish to provide a wrapper
-(e.g. gem).
+NOTE: This command delegates to 'gem wrapper' => <https://github.com/rvm/gem-wrappers>
 
-When no binaries are provided, rvm will (by default) generate wrappers for
-ruby, gem, rake, irb, rdoc, ri, and testrb.
+## Usage
 
-Examples:
+Show paths and generated wrappers:
 
-If you wish to provide an environment-specific wrapper for rspec with a
-rails 3 gemset, you could do:
+    rvm wrapper show
 
-  ∴ rvm --create ree@rails3
-  ∴ rvm wrapper ree@rails3 r3 spec
 
-Which would add r3_spec with the specified environment to the bin
-directory where you installed rvm.
+Show path to generated wrapper:
 
-Alternatively, if you do:
+    rvm wrapper show executable_name
 
-  ∴ rvm wrapper ruby-1.9.2-head
+Where `executable_name` is something like `ruby` or `rake`.
 
-It will create binaries named ruby, gem, rake, irb, rdoc, ri and tesrb
-in the rvm bin directory.
 
-Finally, to show another real and common use, you can use wrapper
-to generate ruby executables and gems for passenger to use. Namely:
+It is also possible to generate a wrapper for external scripts that require ruby:
 
-  ∴ rvm use ree@rails3 --passenger
+    rvm wrapper /full/path/to/script
 
-is equivelant to:
+Where `/full/path/to/script` is full path to existing script
 
-  ∴ rvm use ree@rails3
-  ∴ rvm wrapper ree@rails3 passenger
 
-Which creates passenger_* binaries in the rvm bin directory using
-ree and the rails3 gemset.
+Wrappers are generated automatically, but it is possible to rerun the process:
+
+    rvm wrapper regenrate
+
+
+Documentation:
+
+    rvm wrapper [help]

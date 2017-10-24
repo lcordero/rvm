@@ -8,16 +8,19 @@ then
 fi
 
 source "$rvm_scripts_path/base"
-source "$rvm_scripts_path/version"
+source "$rvm_scripts_path/functions/autolibs"
+source "$rvm_scripts_path/functions/detect_system"
+source "$rvm_scripts_path/functions/version"
+source "$rvm_scripts_path/functions/version-installed-when"
 
 version_for()
 {
-  typeset binary
+  \typeset binary
   binary=${1:-""}
   if
     builtin command -v "$binary" >/dev/null
   then
-    $binary --version | head -n1
+    $binary --version | \command \head -n1
   else
     echo "not installed"
   fi
@@ -27,55 +30,28 @@ info_system()
 {
   rvm_info="
   system:
-    uname:       \"$(uname -a)\"
-    system:      \"$(__rvm_system_path - 99 )\"
-    bash:        \"$(command -v bash) => $(version_for bash)\"
-    zsh:         \"$(command -v zsh) => $(version_for zsh)\"
+    uname:        \"${_system_info}\"
+    name:         \"${_system_name}\"
+    version:      \"${_system_version}\"
+    architecture: \"${_system_arch}\"
+    bash:         \"$(command -v bash) => $(version_for bash)\"
+    zsh:          \"$(command -v zsh) => $(version_for zsh)\"
+    remote_path:  \"$(__rvm_system_path - 99 )\"
 "
-}
-
-print_part()
-{
-  (( $1 )) || return
-  typeset ret
-  ret="$1 $2"
-  (( $1 == 1 )) || ret="${ret}s"
-  printf "$ret "
 }
 
 info_rvm()
 {
-  typeset installed_at years months days hours minutes seconds part
+  __rvm_autolibs_get
+  __rvm_autolibs_translate_description
+
   rvm_info="
   rvm:
-    version:      \"$(__rvm_version | \tr "\n" ' ' | __rvm_strip)\"
+    version:      \"${rvm_version}\"
+    updated:      \"$(__rvm_version_installed_when)\"
+    path:         \"$rvm_path\"
+    autolibs:     \"[${rvm_autolibs_flag}] ${rvm_autolibs_flag_description}\"
 "
-  rvm_info="${rvm_info}    updated:      \""
-  installed_at="$(\cat ${rvm_path}/installed.at)"
-  if
-    [[ -n "${installed_at:-}" ]] && (( installed_at ))
-  then
-    seconds="$(( $(date +%s) - installed_at ))"
-    if
-      (( seconds ))
-    then
-      minutes="$(( seconds / 60 % 60 ))"
-      hours="$(( seconds / 3600 % 24 ))"
-      days="$(( seconds / 86400 % 31 ))"
-      months="$(( seconds / 2678400 % 12 ))"
-      years="$(( seconds / 31536000 ))"
-      seconds="$(( seconds % 60 ))"
-      for part in year month day hour minute second
-      do eval "rvm_info=\"\${rvm_info}\$(print_part \${${part}s} ${part})\""
-      done
-      rvm_info="${rvm_info}ago"
-    else
-      rvm_info="${rvm_info}just now"
-    fi
-  else
-    rvm_info="${rvm_info}can not read installation time\n"
-  fi
-  rvm_info="${rvm_info}\"\n"
 }
 
 info_ruby()
@@ -89,14 +65,13 @@ info_ruby()
   fi
   rvm_info="
   ruby:
-    interpreter:  \"$(printf "%b" "${full_version}" | awk '{print $1}')\"
-    version:      \"$(printf "%b" "${full_version}" | awk '{print $2}')\"
-    date:         \"$(printf "%b" "${full_version}" | sed 's/^.*(\([0-9]\{4\}\(-[0-9][0-9]\)\{2\}\).*$/\1/')\"
-    platform:     \"$(printf "%b" "${full_version}" | sed 's/^.*\[//' | sed 's/\].*$//')\"
-    patchlevel:   \"$(printf "%b" "${full_version}" | sed 's/^.*(//' | sed 's/).*$//')\"
+    interpreter:  \"$(printf "%b" "${full_version}" | __rvm_awk '{print $1}')\"
+    version:      \"$(printf "%b" "${full_version}" | __rvm_awk '{print $2}')\"
+    date:         \"$(printf "%b" "${full_version}" | __rvm_sed 's/^.*(\([0-9]\{4\}\(-[0-9][0-9]\)\{2\}\).*$/\1/')\"
+    platform:     \"$(printf "%b" "${full_version}" | __rvm_sed 's/^.*\[//' | __rvm_sed 's/\].*$//')\"
+    patchlevel:   \"$(printf "%b" "${full_version}" | __rvm_sed 's/^.*(//' | __rvm_sed 's/).*$//')\"
     full_version: \"${full_version}\"
 "
-
 }
 
 info_homes()
@@ -141,23 +116,23 @@ info_debug()
 {
   rvm_info="
 
-$(__rvm_version)
+$(__rvm_print_headline)
   $("$rvm_scripts_path/info" "$rvm_ruby_string" "" )
-  PATH:\n$(printf "%b" "$PATH" | awk -F":" '{print $1":"$2":"$3":"$4":"$5}' )
-  uname -a: $(uname -a)
-  permissions: $(\ls -la "$rvm_path" "$rvm_rubies_path")
+  PATH:\n$(printf "%b" "$PATH" | __rvm_awk -F":" '{print $1":"$2":"$3":"$4":"$5}' )
+  uname -a: ${_system_info}
+  permissions: $(\command \ls -la "$rvm_path" "$rvm_rubies_path")
 "
 
-  if [[ "Darwin" == "$(uname)" ]]
+  if [[ "Darwin" == "${_system_type}" ]]
   then
     rvm_info="$rvm_info
-  uname -r: $(uname -r)
-  uname -m: $(uname -m)
-  sw_vers: $(sw_vers | \tr "\n" ',')
+  uname -r: ${_system_version}
+  uname -m: ${_system_arch}
+  sw_vers: $(sw_vers | \command \tr "\n" ',')
   ARCHFLAGS: ${ARCHFLAGS:-""}
   LDFLAGS: ${LDFLAGS:-""}
   CFLAGS: ${CFLAGS:-""}
-  /Developer/SDKs/*:$(/usr/bin/basename -a /Developer/SDKs/* | \tr "\n" ',')
+  /Developer/SDKs/*:$(/usr/bin/basename -a /Developer/SDKs/* | \command \tr "\n" ',')
 "
   fi
   for file_name in "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.zshenv"
@@ -165,7 +140,7 @@ $(__rvm_version)
     if
       [[ -s "$file_name" ]]
     then
-      rvm_info="$rvm_info\n$file_name:\n$(GREP_OPTIONS="" \grep 'rvm' "$file_name" 2>/dev/null || true)"
+      rvm_info="$rvm_info\n$file_name:\n$(__rvm_grep 'rvm' "$file_name" 2>/dev/null || true)"
     fi
   done
 
@@ -179,10 +154,10 @@ $(__rvm_version)
     if
       [[ -f "$file_name" && -s "$file_name" ]]
     then
-      rvm_info="$rvm_info\n$file_name \(filtered\):\n$(awk '!/assword|_key/{print}' "$file_name" )\n"
+      rvm_info="$rvm_info\n$file_name \(filtered\):\n$(__rvm_awk '!/assword|_key/{print}' "$file_name" )\n"
     fi
   done
-  rvm_info="$rvm_info\ngem sources:\n$(gem sources | awk '/gems/{print}')\n\n"
+  rvm_info="$rvm_info\ngem sources:\n$(gem sources | __rvm_awk '/gems/{print}')\n\n"
 }
 
 info_sections()

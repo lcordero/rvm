@@ -5,13 +5,21 @@
 #duplicated from scripts/rvm - rare reload issue
 __rvm_has_opt()
 {
-  {
-    [[ -n "${ZSH_VERSION}"  ]] && setopt | \grep "^${1}$" >/dev/null 2>&1
-  } ||
-  {
-    [[ -n "${BASH_VERSION}" ]] && [[ ":$SHELLOPTS:" =~ ":${1}:" ]]
-  } ||
-  return 1
+  if # pre-gnu
+   [[ -n "${ZSH_VERSION:-}"  ]]
+  then
+    setopt | GREP_OPTIONS="" \command \grep "^${1:-}$" >/dev/null 2>&1 || return $?
+  elif # mksh
+    [[ -n "${KSH_VERSION:-}"  ]]
+  then
+    set +o | GREP_OPTIONS="" \command \grep "-o ${1:-}$" >/dev/null 2>&1 || return $?
+  elif # bash
+    [[ -n "${BASH_VERSION:-}" ]]
+  then
+    [[ ":${SHELLOPTS:-}:" == *":${1:-}:"* ]] || return $?
+  else # what is this?!
+    return 1
+  fi
 }
 
 if __rvm_has_opt "errexit"
@@ -20,18 +28,17 @@ fi
 
 set +e
 
-: rvm_trace_flag:${rvm_trace_flag:=0}
-if (( rvm_trace_flag > 0 ))
+# duplication marker jkdfkdfngjdjkfngjkdfngjkd
+if
+  (( ${rvm_trace_flag:-0} == 1 ))
 then
-  set -o xtrace
-
-  if [[ -z "${ZSH_VERSION:-}" ]]
-  then
-    export PS4
-    PS4="+ \$(date \"+%s.%N\") \${BASH_SOURCE##\${rvm_path:-}} : \${FUNCNAME[0]:+\${FUNCNAME[0]}()}  \${LINENO} > "
+  if   [[ -n "${BASH_VERSION:-}" ]]
+  then export PS4="+ \$(__rvm_date \"+%s.%N\" 2>/dev/null) \${BASH_SOURCE##\${rvm_path:-}} : \${FUNCNAME[0]:+\${FUNCNAME[0]}()}  \${LINENO} > "
+  elif [[ -n "${ZSH_VERSION:-}" ]]
+  then export PS4="+ %* %F{red}%x:%I %F{green}%N:%i%F{white} %_"
   fi
+  set -o xtrace
 fi
-
 export __array_start rvm_path >/dev/null
 
 #
@@ -54,7 +61,8 @@ then
   do
     if [[ -f "$rvmrc" ]]
     then
-      if GREP_OPTIONS="" \grep '^\s*rvm .*$' "$rvmrc" >/dev/null 2>&1
+      # pre-gnu
+      if GREP_OPTIONS="" \command \grep '^\s*rvm .*$' "$rvmrc" >/dev/null 2>&1
       then
         printf "%b" "
 Error:
@@ -70,10 +78,15 @@ Error:
   unset rvm_rvmrc_files
 fi
 
+# duplication marker jdgkjnfnkjdngjkfnd4fd
 export rvm_path
 if [[ -z "${rvm_path:-}" ]]
 then
-  if (( UID == 0 )) && [[ -d "/usr/local/rvm" ]]
+  if [[ -n "${BASH_SOURCE:-$_}" && -f "${BASH_SOURCE:-$_}" ]]
+  then
+    rvm_path="${BASH_SOURCE:-$_}"
+    rvm_path="$( \command \cd "${rvm_path%/scripts/base}">/dev/null; pwd )"
+  elif (( UID == 0 )) && [[ -d "/usr/local/rvm" ]]
   then rvm_path="/usr/local/rvm"
   elif [[ -d "${HOME}/.rvm" ]]
   then rvm_path="${HOME}/.rvm"
@@ -85,26 +98,25 @@ fi
 
 true ${rvm_scripts_path:="$rvm_path/scripts"}
 
-# Initialize all main RVM variables.
-source "$rvm_scripts_path/initialize"
-
 # Load the general scripts.
 # Use rvm_base_except="selector", for example, to override the loading.
-case " ${rvm_base_except:-} " in
-  (*[[:space:]]selector[[:space:]]*)
-    true # do not load.
-    ;;
-  (*)
-    source "$rvm_scripts_path/selector"
-    source "$rvm_scripts_path/selector_gemsets"
-    ;;
-esac
+load_rvm_scripts()
+{
+  \typeset -a scripts
+  scripts=(
+    selector logging support utility init cleanup env rvmrc install environment gemset checksum list
+  )
 
-typeset -a scripts
-scripts=(
-  logging support utility init cleanup env rvmrc install environment gemset db checksum
-)
-for entry in ${scripts[@]} ; do
-  source "$rvm_scripts_path/functions/$entry"
-done
-unset scripts entry rvm_base_except
+  source "${rvm_scripts_path}/initialize"
+
+
+  for entry in ${scripts[@]}
+  do
+    [[ " ${rvm_base_except:-} " == *" $entry "* ]] ||
+    source "${rvm_scripts_path}/functions/$entry"  ||
+    return $?
+  done
+
+  unset rvm_base_except
+}
+load_rvm_scripts

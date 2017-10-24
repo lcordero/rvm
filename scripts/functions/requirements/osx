@@ -7,8 +7,8 @@ source "$rvm_scripts_path/functions/requirements/smf"
 
 requirements_osx_before()
 {
-  typeset __type
-  for __type in osx_port osx_brew smf osx_fink
+  \typeset __type
+  for __type in osx_brew osx_port smf osx_fink
   do
     if
       requirements_find_${__type}
@@ -19,5 +19,5 @@ requirements_osx_before()
   done
 
   # fallback
-  __lib_type=osx_port
+  __lib_type=osx_brew
 }

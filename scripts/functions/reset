@@ -4,7 +4,7 @@
 # rvm will refresh the stored information the next time it is called after reset.
 __rvm_reset()
 {
-  typeset flag flags file files config configs variable
+  \typeset flag flags file files config configs variable
 
   __rvm_remove_rvm_from_path ; __rvm_conditionally_add_bin_path
 
@@ -16,22 +16,22 @@ __rvm_reset()
 
   for flag in "${flags[@]}"; do
 
-    \rm -f "${rvm_bin_path}"/${flag}_*
+    \command \rm -f "${rvm_bin_path}"/${flag}_*
 
   done
 
   for file in system default ; do
 
     if [[ -f "$rvm_path/${file}" ]] ; then
-      \rm -f "$rvm_path/${file}"
+      \command \rm -f "$rvm_path/${file}"
     fi
 
     if [[ -f "$rvm_path/config/${file}" ]] ; then
-      \rm -f "$rvm_path/config/${file}"
+      \command \rm -f "$rvm_path/config/${file}"
     fi
 
     if [[ -f "$rvm_environments_path/${file}" ]] ; then
-      \rm -f "$rvm_environments_path/${file}"
+      \command \rm -f "$rvm_environments_path/${file}"
     fi
 
   done
@@ -45,21 +45,20 @@ __rvm_reset()
 
   configs=(system_ruby system_gem_path system_user_gem_path)
 
-  for system_config in "${configs[@]}" ; do
-
-    "$rvm_scripts_path/db" "$rvm_user_path/db" "$system_config" "delete"
-
+  for system_config in "${configs[@]}"
+  do
+    __rvm_db_ "$rvm_user_path/db" "$system_config" "delete"
   done
 
   files=(ruby gem rake irb $(__rvm_cd "${rvm_bin_path}" ; \
-    \find . -mindepth 1 -maxdepth 1 -iname 'default*' -type f \
-    | \sed -e 's#./##g'))
+    __rvm_find . -mindepth 1 -maxdepth 1 -iname 'default*' -type f \
+    | __rvm_sed -e 's#./##g'))
 
   for file in "${files[@]}"; do
 
     if [[ -f "${rvm_bin_path}/$file" ]] ; then
 
-      \rm -f "${rvm_bin_path}/$file"
+      \command \rm -f "${rvm_bin_path}/$file"
 
     fi
 

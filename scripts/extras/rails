@@ -71,8 +71,8 @@ rails_routes()
 
   enable_extendglob
 
-  typeset md5_current md5_cached cache_file routes
-  typeset -a ands ors nots
+  \typeset md5_current md5_cached cache_file routes
+  \typeset -a ands ors nots
 
   while [[ $# -gt 0 ]] ; do
     token="$1" ; shift
@@ -111,7 +111,7 @@ rails_routes()
     return 1
   fi
 
-  case $(uname) in
+  case ${_system_type} in
     Linux)  md5="md5sum" ;;
     Darwin) md5="/sbin/md5 -q" ;;
     *)      printf "%b" "ERROR: Unknown OS Type.\n" >&2 ;  return 1 ;;
@@ -121,14 +121,14 @@ rails_routes()
   md5_current=${md5%% *}
 
   if [[ -s "$cache_file" && -s "$cache_file.md5" ]]; then
-    md5_cached=$(\cat -v "${cache_file}.md5")
+    md5_cached=$(\command \cat -v "${cache_file}.md5")
     md5_cached=${md5%% *}
   else
     md5_cached=""
   fi
 
   if [[ -s "$cache_file" && $md5_current == $md5_cached ]]; then
-    routes=$(\cat -v "$cache_file")
+    routes=$(\command \cat -v "$cache_file")
   else
     routes=$(rake routes 2>/dev/null)
     if [[ $? -gt 0 ]]; then
@@ -191,7 +191,7 @@ rails_routes()
 # r - Rails scripts helper function.
 #
 r() {
-  typeset action args
+  \typeset action args
 
   action="$1" ; shift
 
@@ -266,7 +266,11 @@ Actions:
 
   esac
 
-  if [[ -s ./script/rails ]] ; then
+  if [[ -s ./bin/rails ]] ; then  # For Rails4 or bundler's binstubs
+
+    ruby ./bin/rails $action $args
+
+  elif [[ -s ./script/rails ]] ; then
 
     ruby ./script/rails $action $args
 

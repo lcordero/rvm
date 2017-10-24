@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 
 source "$rvm_scripts_path/functions/autolibs"
+source "$rvm_scripts_path/functions/db"
 source "$rvm_scripts_path/functions/build_config"
+source "$rvm_scripts_path/functions/build_config_system"
 source "$rvm_scripts_path/functions/build_requirements"
 if
-  [[ "Darwin" == "$(uname)" ]]
+  [[ "Darwin" == "${_system_type}" ]]
 then
   source "$rvm_scripts_path/functions/osx-ssl-certs"
   source "$rvm_scripts_path/functions/osx-support"
@@ -15,9 +17,9 @@ __rvm_selected_compiler()
 {
   #TODO: add handling for rvm_configure_env
   if
-    [[ " ${rvm_configure_flags[*]}" =~ " --with-gcc=" ]]
+    [[ " ${rvm_configure_flags[*]}" == *" --with-gcc="* ]]
   then
-    typeset __compiler
+    \typeset __compiler
     for __compiler in "${rvm_configure_flags[@]}"
     do
       case "$__compiler" in
@@ -43,18 +45,36 @@ __rvm_found_compiler()
   __rvm_which clang 2>/dev/null
 }
 
+__rvm_fix_rbconfig()
+{
+  \typeset __config_file
+  __config_file="$( __rvm_find $1/ -name rbconfig.rb 2>/dev/null )"
+  [[ -n "${__config_file}" ]]   &&
+  __rvm_remove_static_flag "$@" &&
+  __rvm_fix_gcc_path       "$@" &&
+  __rvm_fix_install_path   "$@"
+}
+
+__rvm_remove_static_flag()
+{
+  if
+    __rvm_grep -- "-Z" "${__config_file}" >/dev/null
+  then
+    rvm_debug "Removing '-Z' from rbconfig."
+    __rvm_sed_i "${__config_file}" -e "s#-Z##"
+  fi
+}
+
 __rvm_fix_gcc_path()
 {
-  typeset __config_file __cc_value __cc_new
+  \typeset __cc_value __cc_new
   __rvm_which $(
-    "$rvm_ruby_home/bin/ruby" -rrbconfig -e 'puts RbConfig::CONFIG["CC"]||"true"' 2>/dev/null
+    "$1/bin/ruby" -rrbconfig -e 'puts RbConfig::CONFIG["CC"]||"true"' 2>/dev/null
   ) >/dev/null 2>/dev/null ||
   {
-    __cc_value="$( "$rvm_ruby_home/bin/ruby" -rrbconfig -e 'puts RbConfig::CONFIG["CC"]' 2>/dev/null )"
-    __config_file="$( \find $rvm_ruby_home/ -name rbconfig.rb 2>/dev/null )"
+    __cc_value="$( "$1/bin/ruby" -rrbconfig -e 'puts RbConfig::CONFIG["CC"]' 2>/dev/null )" &&
     if
-      [[ -n "${__config_file}" ]] &&
-      GREP_OPTIONS="" \grep "CONFIG\[\"CC\"\]" "${__config_file}" >/dev/null
+      __rvm_grep "CONFIG\[\"CC\"\]" "${__config_file}" >/dev/null
     then
       __cc_new="$( __rvm_found_compiler )"
       rvm_debug "Fixing ruby compiler from '${__cc_value}' to '${__cc_new}'."
@@ -66,35 +86,70 @@ __rvm_fix_gcc_path()
   }
 }
 
+__rvm_fix_install_path()
+{
+  \typeset __install_value __install_new
+  __rvm_which $(
+    "$1/bin/ruby" -rrbconfig -e 'puts RbConfig::CONFIG["INSTALL"]||"true"' 2>/dev/null
+  ) >/dev/null 2>/dev/null ||
+  {
+    __install_value="$( "$1/bin/ruby" -rrbconfig -e 'puts RbConfig::CONFIG["INSTALL"]' 2>/dev/null )"
+    if
+      __rvm_grep "CONFIG\[\"INSTALL\"\]" "${__config_file}" >/dev/null
+    then
+      __install_new="$( \command \which install )"
+      rvm_debug "Fixing ruby installer from '${__install_value}' to '${__install_new}'."
+      __rvm_sed_i "${__config_file}" \
+        -e "s#CONFIG\[\"INSTALL\"\].*\$#CONFIG[\"INSTALL\"] = \"${__install_new}\"#"
+    else
+      rvm_warn "Installed ruby contains path to non existing compiler '${__install_value}', compiling native gems might be impossible."
+    fi
+  }
+}
+
 __rvm_run_compiler()
 {
   if
     [[ -n "${1:-}" ]]
   then
-    typeset compiler="$1"
+    \typeset compiler="$1"
     shift
     if [[ -n "${ZSH_VERSION:-}" ]]
-    then ${=compiler} "$@" || return $?
-    else ${compiler}  "$@" || return $?
+    then ${=compiler} "$@" 2>&1 || return $?
+    else ${compiler}  "$@" 2>&1 || return $?
     fi
   else
     return 1
   fi
 }
 
-__rvm_compiler_is() [[ "$( __rvm_run_compiler "$1" "$2" )" =~ "$3" ]]
+__rvm_compiler_is()
+{
+  __rvm_run_compiler "$1" "$2" | __rvm_grep -i "$3" >/dev/null
+}
+
+__rvm_compiler_version_is()
+{
+  \typeset compiler __check
+  __check="$1"
+  compiler="${2:-$( __rvm_found_compiler )}" &&
+  __rvm_compiler_is "$compiler" "--version" "${__check}" ||
+  return $?
+}
 
 __rvm_compiler_is_llvm()
 {
-  typeset compiler
-  compiler="${1:-$( __rvm_found_compiler )}" &&
-  __rvm_compiler_is "$compiler" "--version" llvm ||
-  return $?
+  __rvm_compiler_version_is "llvm" "${1:-}" || return $?
+}
+
+__rvm_compiler_is_clang()
+{
+  __rvm_compiler_version_is "clang" "${1:-}" || return $?
 }
 
 __rvm_compiler_version_or_higher()
 {
-  typeset __version compiler
+  \typeset __version compiler
   compiler="${2:-$(  __rvm_found_compiler )}" &&
   __version="$( __rvm_run_compiler "$compiler" "-dumpversion" )" &&
   __rvm_version_compare "${__version:-0}" -ge "$1" ||
@@ -103,9 +158,11 @@ __rvm_compiler_version_or_higher()
 
 __rvm_update_configure_env()
 {
-  typeset -a local_configure_env
-  typeset _variable _value _iterator _found
+  \typeset -a local_configure_env
+  \typeset _variable _value _iterator _found
+
   rvm_debug "__rvm_update_configure_env($#):$*:"
+
   while (( $# ))
   do
     _variable="${1%%\=*}"
@@ -130,7 +187,7 @@ __rvm_update_configure_opt_dir()
       __rvm_update_configure_opt_dir_option "$2"
       ;;
     (ruby-1.9.3-p*)
-      typeset __patchlevel
+      \typeset __patchlevel
       __patchlevel="${1##ruby-1.9.3-p}"
       if
         (( __patchlevel < 297 ))
@@ -179,19 +236,25 @@ __rvm_update_configure_opt_dir_option_or_flags()
 
 __rvm_update_configure_opt_dir_flags()
 {
-  typeset __enable_rpath __lib_path
+  \typeset __enable_rpath __lib_path
+
   if
-    __rvm_which bash | xargs head -n 1 | \cat -e | \grep -b '^^?ELF' >/dev/null
+    #                  __rvm_xargs \head -n 1 -- can not have \command - breaks xargs
+    __rvm_which bash | __rvm_xargs \head -n 1 | \command \cat -e | __rvm_grep -b '^^?ELF' >/dev/null
   then
     __enable_rpath="true"
   fi
+
   __rvm_update_configure_env CFLAGS="-I$1/include"
   __rvm_update_configure_env LDFLAGS="-L$1/lib"
+
   [[ -z "${__enable_rpath:-}" ]] ||
     __rvm_update_configure_env LDFLAGS="-Wl,-rpath,$1/lib"
+
   if [[ -d "$1/lib64" ]]
   then
     __rvm_update_configure_env LDFLAGS="-L$1/lib64"
+
     [[ -z "${__enable_rpath:-}" ]] ||
       __rvm_update_configure_env LDFLAGS="-Wl,-rpath,$1/lib64"
   fi
@@ -241,54 +304,50 @@ __rvm_mono_env()
 # Returns all mri compatible (partly) ruby for use
 # with things like rbx etc which require a ruby be installed.
 __rvm_mri_rubies()
-{
-  typeset versions _ruby
-  versions="${1:-"ruby-1.9|ruby-2"}"
+(
   # find on bsd does not have -not, we need to use \!
-  for _ruby in $( \find $rvm_rubies_path/ -maxdepth 1 -mindepth 1 -type d \! -type l )
-  do
-    printf "%b" "${_ruby##*/}\n"
-  done | GREP_OPTIONS="" \grep -E "$versions"
-}
+  \typeset versions="${1:-"ruby-1.9|ruby-2"}"
+  __rvm_cd "$rvm_rubies_path" &&
+  __rvm_find . -maxdepth 1 -mindepth 1 -type d \! -type l |
+  __rvm_awk -F/ "/$versions/"' {if (system("test -x \""$0"/bin/ruby\"")==0) print $2}' ||
+  return $?
+)
 
 # Returns the first mri compatible (partly) ruby for use
 # with things like rbx etc which require a ruby be installed.
 __rvm_mri_ruby()
 {
-  typeset versions
-  versions="${1:-"ruby-1.9|ruby-2"}"
-  _mri_rubies=( $( __rvm_mri_rubies "$versions" ) )
-  _current_ruby=$(__rvm_env_string)
-  if [[ " ${_mri_rubies[*]} " =~ " ${_current_ruby} " ]]
-  then
-    printf "%b" "${_current_ruby}\n"
-  else
-    for _ruby in ${_mri_rubies[@]}
-    do
-      printf "%b" "${_ruby}\n"
-    done | sort | head -n 1
-  fi
-  return 0
+  __rvm_mri_rubies "${1:-"ruby-1.9|ruby-2"}" |
+  __rvm_version_sort |
+  __rvm_awk 'BEGIN{ selected=$0 } /'"$(__rvm_env_string)"'/{ selected=$0 } END {print $0}'
 }
 
 __rvm_ensure_has_mri_ruby()
 {
-  typeset versions
+  \typeset versions
   versions="${1:-"ruby-1.9|ruby-2"}"
   if
     [[ -z "$(__rvm_mri_ruby $versions)" ]]
   then
-    typeset compat_result
+    \typeset compat_result
     compat_result=0
+    rvm_warn "
+Warning! Requested ruby installation which requires another ruby available - installing ${versions##*|} first.
+"
     if
-      ! ( __rvm_run_wrapper manage install ruby )
+      (
+        __rvm_select "${versions##*|}" # prevents endless loop for rbx
+        __rvm_run_wrapper manage install "${versions##*|}"
+      )
     then
+      true
+    else
+      compat_result=$?
       rvm_error "
-To proceed rvm requires a ${versions} compatible ruby is installed.
-We attempted to install ruby automatically but it failed.
+To proceed rvm requires a ${versions##*|} compatible ruby is installed.
+We attempted to install it automatically but it failed with status $compat_result.
 Please install it manually (or a compatible alternative) to proceed.
 "
-      compat_result=1
     fi
     return $compat_result
   fi
@@ -298,12 +357,12 @@ Please install it manually (or a compatible alternative) to proceed.
 
 __rvm_is_enough_ram()
 {
-  typeset __required_ram __existing_ram
+  \typeset __required_ram __existing_ram
 
   __required_ram=$(( $1 * 1024 * 1024 ))
 
-  __existing_ram="$(free -b 2>/dev/null | awk '{if (NR==3) print $4}')"
-  : ${__existing_ram:="$(sysctl hw.physmem 2>/dev/null | cut -f 2 -d :)"}
+  __existing_ram="$(free -b 2>/dev/null | __rvm_awk '{if (NR==3) print $4}')"
+  : ${__existing_ram:="$(sysctl hw.physmem 2>/dev/null | __rvm_awk -F"[:=]" '{print $2}')"}
   : __existing_ram: ${__existing_ram:=0}
   rvm_debug "Existing ram $(( __existing_ram /1024 /1024 ))MB."
 

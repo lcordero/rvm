@@ -4,11 +4,11 @@ __rvm_record_install()
 {
   [[ -n "$1" ]] || return
 
-  typeset recorded_ruby_name rvm_install_record_file
+  \typeset recorded_ruby_name rvm_install_record_file
   recorded_ruby_name="$( "$rvm_scripts_path/tools" strings "$1" )"
   rvm_install_record_file="$rvm_user_path/installs"
 
-  [[ -f "$rvm_install_record_file" ]] || \touch "$rvm_install_record_file"
+  [[ -f "$rvm_install_record_file" ]] || \command \touch "$rvm_install_record_file"
   __rvm_sed_i "$rvm_install_record_file" -e "/^$recorded_ruby_name/d"
 
   #TODO: use `for` so  rvm_configure_flags are quoted properly
@@ -17,7 +17,7 @@ __rvm_record_install()
 
 __rvm_remove_install_record()
 {
-  typeset recorded_ruby_name rvm_install_record_file
+  \typeset recorded_ruby_name rvm_install_record_file
   recorded_ruby_name="$( "$rvm_scripts_path/tools" strings "$1" )"
   rvm_install_record_file="$rvm_user_path/installs"
 
@@ -28,7 +28,7 @@ __rvm_remove_install_record()
 
 __rvm_recorded_install_command()
 {
-  typeset recorded_ruby_name
+  \typeset recorded_ruby_name
   recorded_ruby_name="$( "$rvm_scripts_path/tools" strings "$1" )"
   recorded_ruby_name=${recorded_ruby_name%%${rvm_gemset_seperator:-"@"}*}
 
@@ -36,9 +36,9 @@ __rvm_recorded_install_command()
 
   if
     [[ -s "$rvm_user_path/installs" ]] &&
-    GREP_OPTIONS="" \grep "^$recorded_ruby_name " "$rvm_user_path/installs" >/dev/null 2>&1
+    __rvm_grep "^$recorded_ruby_name " "$rvm_user_path/installs" >/dev/null 2>&1
   then
-    GREP_OPTIONS="" \grep "^$recorded_ruby_name " "$rvm_user_path/installs" | head -n 1
+    __rvm_grep "^$recorded_ruby_name " "$rvm_user_path/installs" | \command \head -n 1
   else
     return 1
   fi

@@ -7,14 +7,13 @@ requirements_find_osx_fink()
   then
     return 0
   else # find fink out of PATH and link to rvm/bin
-    typeset __binary
+    \typeset __binary
     for __binary in ~/sw/bin/fink ~/.sw/bin/fink /sw/bin/fink /usr/local/bin/fink
     do
       if
         [[ -f "${__binary}" && -s "${__binary}" && -x "${__binary}" ]]
       then
-        # link to rvm_bin for easy adding to PATH
-        ln -nfs "${__binary}" "${rvm_bin_path:-$rvm_path/bin}/fink"
+        PATH="$PATH:${__binary%/*}"
         return 0
       fi
     done
@@ -24,19 +23,14 @@ requirements_find_osx_fink()
 
 requirements_osx_fink_path()
 (
-  typeset fink_binary
-  fink_binary="$( __rvm_which fink )"
-
-  while [[ -L "${fink_binary}" ]]
-  do fink_binary="$( readlink "${fink_binary}" )"
-  done
-
+  \typeset fink_binary="$( __rvm_which fink )"
+  __rvm_readlink_deep fink_binary
   echo "${fink_binary%/bin/fink}"
 )
 
 requirements_osx_fink_packages_path()
 {
-  awk '/Basepath:/ {print$2}' < "$(requirements_osx_fink_path)"/etc/fink.conf
+  __rvm_awk '/Basepath:/ {print$2}' < "$(requirements_osx_fink_path)"/etc/fink.conf
 }
 
 __rvm_fink_sudo()
@@ -54,14 +48,14 @@ __rvm_fink_sudo()
 
 requirements_osx_fink_lib_installed()
 {
-  fink list -i $1 2>/dev/null | awk 'BEGIN{result=1} $2=="'"$1"'" {result=0} END{exit result}' || return $?
+  fink list -i $1 2>/dev/null | __rvm_awk 'BEGIN{result=1} $2=="'"$1"'" {result=0} END{exit result}' || return $?
 }
 
 requirements_osx_fink_libs_install()
 {
   __rvm_fink_sudo fink --yes install "$@"  ||
   {
-    typeset ret=$?
+    \typeset ret=$?
     rvm_warn "There were package installation errors, make sure to read the log."
     return $ret
   }
@@ -70,7 +64,7 @@ requirements_osx_fink_libs_install()
 requirements_osx_fink_update_system()
 {
   # enable unstable for needed packages
-  __rvm_fink_sudo sed -i'' -e 's#^\(Trees: .*\)$#\1 unstable/main#' "$(requirements_osx_fink_path)"/etc/fink.conf
+  __rvm_fink_sudo __rvm_sed -i'' -e 's#^\(Trees: .*\)$#\1 unstable/main#' "$(requirements_osx_fink_path)"/etc/fink.conf
 
   # update package definitions
   __rvm_log_command fink_update "Updating fink" __rvm_fink_sudo fink selfupdate || return $?
@@ -90,14 +84,18 @@ requirements_osx_fink_gcc_version_detect()
     __rvm_version_compare "${_system_version}" -le 10.7
   then
     fink_libs+=( gcc46 )
-  else # 10.8+
-    fink_libs+=( gcc48 )
+  elif 
+    __rvm_version_compare "${_system_version}" -le 10.10
+  then 
+    _libs+=( gcc49 )
+  else # 10.10
+    fink_libs+=( gcc49 )
   fi
 }
 
 requirements_osx_fink_libs_default_tools()
 {
-  fink_libs+=( autoconf2.6 automake1.13 pkgconfig )
+  fink_libs+=( autoconf2.6 automake1.14 pkgconfig )
 
   if
     __rvm_version_compare "${_system_version}" -le 10.6
@@ -107,7 +105,7 @@ requirements_osx_fink_libs_default_tools()
 
   if
     ! __ruby_clang_ok "$1" &&
-    [[ -z "${selected_compiler}" || "${selected_compiler}" =~ "gcc-4.2" ]]
+    [[ -z "${selected_compiler}" || "${selected_compiler}" == *"gcc-4.2"* ]]
   then
     # install gcc only if no gcc-4.2 available, prevents problems with gcc-4.2 on OSX 10.6
     __rvm_which gcc-4.2 >/dev/null || requirements_osx_fink_gcc_version_detect
@@ -116,9 +114,9 @@ requirements_osx_fink_libs_default_tools()
 
 requirements_osx_fink_libs_default_libs()
 {
-  typeset __lib
+  \typeset __lib
 
-  for __lib in libyaml readline6 libxml2 libxslt libksba8 sqlite3
+  for __lib in libyaml readline6 libksba8 sqlite3
   do
     fink_libs+=( ${__lib} ${__lib}-shlibs )
   done
@@ -142,7 +140,7 @@ requirements_osx_fink_libs_default()
 {
   # FIXME: what packages are needed for installation
   # lib search => http://pdb.finkproject.org/pdb/browse.php?summary=openssl
-  typeset -a fink_libs
+  \typeset -a fink_libs
   fink_libs=()
 
   requirements_osx_fink_libs_default_tools "$@" || return $?
@@ -157,23 +155,35 @@ requirements_osx_fink_define()
     (rvm)
       true
       ;;
-    (jruby*head)
-      __rvm_which git >/dev/null || requirements_check git
-      requiremnts_osx_java_fail  || return $?
-      ;;
+
     (jruby*)
-      requiremnts_osx_java_fail  || return $?
+      requirements_check make
+
+      if
+        is_head_or_disable_binary "$1"
+      then
+        __rvm_which git >/dev/null || requirements_check git
+        case $( jruby_installation_method  "$1" ) in
+          mvn) requirements_check_custom_after mvn=maven ;;
+        esac
+      fi
+
+      requiremnts_osx_java_fail || return $?
       ;;
+
     (ir*)
       __rvm_which mono >/dev/null 2>&1 || return $?
       ;;
+
     (opal)
       requirements_check node
       ;;
+
     (*-head)
       __rvm_which git >/dev/null || requirements_check git
       requirements_osx_fink_libs_default "$1"
       ;;
+
     (*)
       requirements_osx_fink_libs_default "$1"
       ;;
@@ -182,7 +192,7 @@ requirements_osx_fink_define()
 
 requirements_osx_fink_libs_configure()
 {
-  typeset package fink_lib fink_lib_prefix
+  \typeset package fink_lib fink_lib_prefix
   package="$1"
 
   if
@@ -198,14 +208,20 @@ requirements_osx_fink_after()
 {
   requirements_osx_fink_libs_configure "$1" || return $?
 
-  rvm_requiremnts_fail_or_run_action 2 \
-    "Skipping certificates update, make sure your certificates are up to date." \
-    requirements_osx_update_openssl_cert "$(requirements_osx_fink_packages_path)/bin/openssl" || return $?
+  case "$1" in
+    (jruby*) true ;;
+    (*) requirements_osx_fink_after_update_certs_openssl ;;
+  esac
+}
+
+requirements_osx_fink_after_update_certs_openssl()
+{
+  requirements_osx_update_openssl_cert "$(requirements_osx_fink_packages_path)/bin/openssl" || return $?
 }
 
 requirements_osx_fink_install_fink()
 {
-  typeset fink_home fink_version
+  \typeset fink_home fink_version
   fink_version=0.34.8
   rvm_warn "About to install fink-${fink_version}, press ENTER to use default answers.
 Make sure to watch the graphical login, questions for X11 installation will appear!"
@@ -218,8 +234,7 @@ Make sure to watch the graphical login, questions for X11 installation will appe
 
   __rvm_try_sudo ./bootstrap /sw && /sw/bin/pathsetup.sh || return $?
 
-  # link to rvm_bin for easy adding to PATH
-  ln -nfs "/sw/bin/fink" "${rvm_bin_path:-$rvm_path/bin}/fink"
+  PATH="$PATH:/sw/bin"
 }
 
 requirements_osx_fink_ensure_fink_available()

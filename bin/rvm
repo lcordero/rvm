@@ -31,10 +31,13 @@ then
   unset rvmrc
 fi
 
+# duplication marker jdgkjnfnkjdngjkfnd4fd
 export rvm_path
 if [[ -z "${rvm_path:-}" ]]
 then
-  if (( UID == 0 )) && [[ -d "/usr/local/rvm" ]]
+  if [[ -d "${0%/bin/rvm}" ]]
+  then rvm_path="$( \cd "${0%/bin/rvm}">/dev/null; pwd )"
+  elif (( UID == 0 )) && [[ -d "/usr/local/rvm" ]]
   then rvm_path="/usr/local/rvm"
   elif [[ -d "${HOME}/.rvm" ]]
   then rvm_path="${HOME}/.rvm"
@@ -51,6 +54,10 @@ export rvm_is_not_a_shell_function
 # if to prevent fork-bomb
 if source "${rvm_scripts_path:="$rvm_path/scripts"}/rvm"
 then
+  typeset -f rvm >/dev/null 2>&1 || {
+    echo "RVM not loaded, aborting." >&2
+    exit 1
+  }
   rvm "$@"
 else
   echo "Error sourcing RVM!"  1>&2

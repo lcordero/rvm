@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 
-source "$rvm_scripts_path/functions/rvmrc_project"
-source "$rvm_scripts_path/functions/rvmrc_set"
-source "$rvm_scripts_path/functions/rvmrc_to"
-source "$rvm_scripts_path/functions/rvmrc_trust"
-source "$rvm_scripts_path/functions/rvmrc_warning"
+source "${rvm_scripts_path}/functions/rvmrc_env"
+source "${rvm_scripts_path}/functions/rvmrc_project"
+source "${rvm_scripts_path}/functions/rvmrc_set"
+source "${rvm_scripts_path}/functions/rvmrc_to"
+source "${rvm_scripts_path}/functions/rvmrc_trust"
+source "${rvm_scripts_path}/functions/rvmrc_warning"
 
 __rvm_rvmrc_match_all() [[ "${1:-}" == "all" || "${1:-}" == "all.rvmrcs" || "${1:-}" == "allGemfiles" ]]
 
 __rvm_rvmrc_tools()
 {
-  typeset rvmrc_action rvmrc_warning_action rvmrc_path saveIFS trust rvmrc_ruby
+  \typeset rvmrc_action rvmrc_warning_action rvmrc_path saveIFS trust rvmrc_ruby
 
   rvmrc_action="$1"
   (( $# )) && shift || true
@@ -26,36 +27,33 @@ __rvm_rvmrc_tools()
     [[ "${rvmrc_action}" == "create" ]]
   then
     rvmrc_ruby="${1:-${GEM_HOME##*/}}"
-    rvmrc_path="$(__rvm_cd "$PWD" >/dev/null 2>&1; pwd)"
+    rvmrc_path="$(__rvm_cd "$PWD" >/dev/null 2>&1; pwd)/${2:-.rvmrc}"
   elif
-    [[ "${rvmrc_action}" == "to" ]]
+    [[ "$1" == ".rvmrc" ]]
   then
-    rvmrc_path="$1"
+    rvmrc_path="$PWD/.rvmrc"
   elif
-    __rvm_rvmrc_match_all "${1:-}"
+    [[ "${rvmrc_action}" == "to" || "${rvmrc_action}" == "warning" ]] ||
+    [[ -n "${1:-}" ]]
   then
     rvmrc_path="$1"
   else
-    if [[ -n "${1:-}" ]]
-    then rvmrc_path="${1%/.rvmrc}"
-    else rvmrc_path="$PWD"
-    fi
-    rvmrc_path="$(__rvm_cd "${rvmrc_path}" >/dev/null 2>&1; pwd)"
+    rvmrc_path="$PWD/.rvmrc"
   fi
-  (( $# )) && shift || true
 
   if
-    (( $# ))
+    [[ "${rvmrc_action}" == "to" ||
+       "${rvmrc_action}" == "warning" ||
+       "${rvmrc_action}" == "create"
+    ]]||
+    __rvm_rvmrc_match_all "${rvmrc_path:-}" # ignore all*
   then
-    rvmrc_path="${rvmrc_path}/$1"
-  elif
-    [[ "${rvmrc_action}" == "to" ]] ||
-    __rvm_rvmrc_match_all "${rvmrc_path:-}"
-  then
-    true # ignore all*
+    true 
   else
     __rvm_project_dir_check "${rvmrc_path}" rvmrc_path "${rvmrc_path}/.rvmrc"
   fi
+  rvmrc_path="${rvmrc_path//\/\///}"
+  rvmrc_path="${rvmrc_path%/}"
 
   case "$rvmrc_action" in
     warning)
@@ -106,45 +104,11 @@ __rvm_rvmrc_tools()
       ;;
 
     load)
-      rvm_current_rvmrc="" rvm_trust_rvmrcs_flag=1 __rvm_project_rvmrc "$rvmrc_path"
+      rvm_current_rvmrc="" rvm_trust_rvmrcs_flag=1 __rvm_project_rvmrc "${rvmrc_path%/.rvmrc}"
       ;;
 
     try_to_read_ruby)
-      case "$rvmrc_path" in
-        (*/.rvmrc)
-          if ! __rvm_rvmrc_tools is_trusted "$(dirname "$rvmrc_path")"  "$(basename "$rvmrc_path")"
-          then
-            # subprocess to not mess with current process variables
-            ( rvm_promptless=1 __rvm_project_rvmrc "$rvmrc_path" >/dev/null 2>&1 )
-          fi
-
-          if __rvm_rvmrc_tools is_trusted "$(dirname "$rvmrc_path")" "$(basename "$rvmrc_path")"
-          then
-            rvm_action="${rvm_action:-use}"
-            rvm_ruby_string="$(
-              rvm_current_rvmrc=""
-              rvm_trust_rvmrcs_flag=1
-              rvm_is_not_a_shell_function=0
-              __rvm_project_rvmrc "$rvmrc_path" >/dev/null 2>&1
-              __rvm_env_string
-            )"
-            rvm_ruby_strings="$rvm_ruby_string"
-          else
-            rvm_action="error"
-            rvm_error_message="The give path does not contain '$(basename "$rvmrc_path")' (or it is not trusted): '$(dirname "$rvmrc_path")' rest of params: '$@'"
-          fi
-        ;;
-        (*)
-          rvm_action="${rvm_action:-use}"
-          rvm_ruby_string="$(
-            rvm_current_rvmrc=""
-            rvm_trust_rvmrcs_flag=1
-            __rvm_project_rvmrc "$rvmrc_path" >/dev/null 2>&1
-            __rvm_env_string
-          )"
-          rvm_ruby_strings="$rvm_ruby_string"
-        ;;
-      esac
+      __rvm_rvmrc_tools_try_to_read_ruby "$@" || return $?
       ;;
 
     *)
@@ -154,4 +118,62 @@ __rvm_rvmrc_tools()
   esac
 
   return $?
+}
+
+__rvm_rvmrc_tools_try_to_read_ruby()
+{
+  case "$rvmrc_path" in
+    (*/.rvmrc)
+      # make sure the flag is passed on to sub-process () / $()
+      if [[ -n "${rvm_trust_rvmrcs_flag:-}" ]]
+      then export rvm_trust_rvmrcs_flag
+      fi
+
+      rvmrc_path="$(cd "$(dirname "$rvmrc_path")"; pwd)/.rvmrc"
+
+      __rvm_rvmrc_tools is_trusted "$(dirname "$rvmrc_path")" .rvmrc ||
+      (
+        # subprocess to not mess with current process variables
+        rvm_promptless=1 __rvm_project_rvmrc "$rvmrc_path" >/dev/null 2>&1
+      )
+
+      if __rvm_rvmrc_tools is_trusted "$(dirname "$rvmrc_path")" .rvmrc
+      then __rvm_rvmrc_tools_read_ruby "$@" || return $?
+      else return 1
+      fi
+      ;;
+    (*)
+      __rvm_rvmrc_tools_read_ruby "$@" || return $?
+      ;;
+  esac
+}
+
+__rvm_save_variables()
+{
+  \typeset __save_to __key
+  __save_to="$1"
+  shift
+  for __key in "$@"
+  do
+    eval "${__save_to}+=( \"\${__key}=\${${__key}}\" )"
+  done
+}
+
+__rvm_rvmrc_tools_read_ruby()
+{
+  \typeset __result
+  \typeset -a rvmrc_tools_read_ruby
+  rvmrc_tools_read_ruby=()
+  __rvm_save_variables rvmrc_tools_read_ruby \
+    rvm_current_rvmrc result current_result rvm_token next_token \
+    rvm_action _string
+  rvm_current_rvmrc=""
+
+  rvm_action="${rvm_action:-use}" rvm_trust_rvmrcs_flag=1 __rvm_project_rvmrc "$rvmrc_path" >/dev/null &&
+    rvm_ruby_string="${GEM_HOME##*/}" &&
+    rvm_ruby_strings="$rvm_ruby_string" ||
+    __result=101
+
+  __rvm_set_env "" "${rvmrc_tools_read_ruby[@]}"
+  return ${__result:-0}
 }

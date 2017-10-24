@@ -4,6 +4,10 @@ source "$rvm_scripts_path/base"
 
 rvm_is_not_a_shell_function=0 # for nested invocations of rvm
 
+if [[ -n "${rvm_in_flag}" && -d "${rvm_in_flag}" ]]
+then __rvm_cd "${rvm_in_flag}"
+fi
+
 __rvm_attempt_single_exec()
 {
   # Return if we have multiple rubies. or we're not running exec.
@@ -11,7 +15,7 @@ __rvm_attempt_single_exec()
   then
     __rvm_become "$rvm_ruby_strings"
     __rvm_load_rvmrc
-    export rvm_project_rvmrc=0 rvm_ignore_rvmrc=1
+    export rvm_project_rvmrc=0
     exec "${args[@]}"
   fi
 
@@ -42,12 +46,12 @@ __rvm_ruby_do()
       then
         current_env="$current_set_ruby ($current_env)"
       fi
-      rvm_log "$current_env: $(ruby -v $rvm_ruby_mode | \tr "\n" ' ')"
+      rvm_log "$current_env: $(ruby -v $rvm_ruby_mode | \command \tr "\n" ' ')"
       unset current_env
     fi
     (
       __rvm_load_rvmrc
-      export rvm_project_rvmrc=0 rvm_ignore_rvmrc=1
+      export rvm_project_rvmrc=0
       "${args[@]}"
     )
   fi
@@ -81,18 +85,18 @@ __rvm_summary()
   then
     if rvm_pretty_print stdout
     then
-      summary="$summary ${rvm_notify_clr:-}${#successes[*]} successful: $(echo "${successes[*]}" | sed 's# #, #g')${rvm_reset_clr:-}\n"
+      summary="$summary ${rvm_notify_clr:-}${#successes[*]} successful: $(echo "${successes[*]}" | __rvm_sed 's# #, #g')${rvm_reset_clr:-}\n"
     else
-      summary="$summary ${#successes[*]} successful: $(echo "${successes[*]}" | sed 's# #, #g')\n"
+      summary="$summary ${#successes[*]} successful: $(echo "${successes[*]}" | __rvm_sed 's# #, #g')\n"
     fi
   fi
 
   if [[ ${#errors[*]} -gt 0 ]] ; then
     if rvm_pretty_print stdout
     then
-      summary="$summary ${rvm_error_clr:-}${#errors[*]} errors: $(echo "${errors[*]}" | sed 's# #, #g')${rvm_reset_clr:-}\n"
+      summary="$summary ${rvm_error_clr:-}${#errors[*]} errors: $(echo "${errors[*]}" | __rvm_sed 's# #, #g')${rvm_reset_clr:-}\n"
     else
-      summary="$summary ${#errors[*]} errors: $(echo "${errors[*]}" | sed 's# #, #g')\n"
+      summary="$summary ${#errors[*]} errors: $(echo "${errors[*]}" | __rvm_sed 's# #, #g')\n"
     fi
   fi
 
@@ -129,7 +133,7 @@ __rvm_yaml()
   done
   unset index array_start
 
-  \mkdir -p log
+  \command \mkdir -p log
 
   printf "%b" "$yaml" | tee -a log/summary.yaml
 
@@ -139,12 +143,12 @@ __rvm_yaml()
 # Output the summary in a json format.
 __rvm_json()
 {
-  typeset index array_start
+  \typeset index array_start
 
   json="{
 \"totals\": { \"rubies\": ${#rubies[*]}, \"successes\": ${#successes[*]}, \"errors\": ${#errors[*]} },
-\"successful\": [$(echo \"${successes[*]}\" | sed 's# #", "#g' | sed 's#\"\"##')],
-\"errors\": [$(echo \"${errors[*]}\" | sed 's# #", "#g' | sed 's#\"\"##')],
+\"successful\": [$(echo \"${successes[*]}\" | __rvm_sed 's# #", "#g' | __rvm_sed 's#\"\"##')],
+\"errors\": [$(echo \"${errors[*]}\" | __rvm_sed 's# #", "#g' | __rvm_sed 's#\"\"##')],
 \"rubies\": { "
 
   total=${#rubies[*]}
@@ -197,10 +201,20 @@ fi
 
 previous_rvm_ruby_strings="$rvm_ruby_strings"
 rvm_ruby_strings=( $( __rvm_expand_ruby_string "$rvm_ruby_strings" ) ) || {
-  rvm_ruby_string="${previous_rvm_ruby_strings## }"
-  __rvm_ruby_string
-  rvm_error "Ruby ${rvm_ruby_string} is not installed."
-  exit 1
+  \typeset result=$?
+  if
+    [[ $result -eq 2 && -n "${rvm_expected_gemset_name:-${rvm_gemset_name:-}}" ]]
+  then
+    rvm_ruby_string="${previous_rvm_ruby_strings## }"
+    __rvm_ruby_string
+    rvm_error "Gemset '${rvm_expected_gemset_name:-${rvm_gemset_name:-}}' does not exist, \
+'rvm $rvm_ruby_string do rvm gemset create ${rvm_expected_gemset_name:-${rvm_gemset_name:-}}' first, or append '--create'."
+  else
+    rvm_ruby_string="${previous_rvm_ruby_strings## }"
+    __rvm_ruby_string
+    rvm_error "Ruby ${rvm_ruby_string} is not installed."
+  fi
+  exit $result
 }
 unset previous_rvm_ruby_strings
 
